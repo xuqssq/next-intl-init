@@ -1,6 +1,6 @@
 {
   "name": "next-intl-init",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "init.mjs",
   "license": "MIT",
   "keywords": ["i18n", "init", "next-intl", "generate", "i18n-init", "i18n-generate", "message", "messages", "i18n-message", "i18n-messages", "i18n-init-message", "i18n-init-messages", "i18n-generate-message", "i18n-generate-messages"],
