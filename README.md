@@ -1,5 +1,5 @@
 
-```markdown
+
 # AI-Powered i18n Translation Script
 
 一个基于 AI 的自动化国际化翻译工具，支持批量翻译 JSON 格式的语言文件，保持原始文件结构和键值完整性。
