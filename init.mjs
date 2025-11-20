@@ -13,6 +13,8 @@ const initConstants = () => {
   const content = `
 import path from "path";
 
+export const OPEN_ROUTER_KEY = ""; //OpenRouter API密钥
+export const OPEN_ROUTER_MODEL = "openai/gpt-4o-mini"; //OpenRouter模型
 export const ORIGINAL_JSON = path.resolve(process.cwd(), "src/i18n/messages/en.json"); //源文件
 export const TRANSLATED_DIR = path.resolve(process.cwd(), "src/i18n/messages"); //翻译后存储的文件夹
 export const INPUT_COUNT = 50; // 一批翻译多少条
@@ -53,13 +55,14 @@ import {
   MAX_RETRIES,
   RETRY_DELAY,
   OUTPUT_LIST,
+  OPEN_ROUTER_KEY,
+  OPEN_ROUTER_MODEL,
 } from "./constants.mjs";
 
-const OPEN_ROUTER_KEY ="";
 const openrouter = createOpenRouter({
   apiKey: OPEN_ROUTER_KEY,
 });
-const model = openrouter("openai/gpt-4o-mini");
+const model = openrouter(OPEN_ROUTER_MODEL);
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -154,7 +157,7 @@ const translateWithRetry = async (prompt, language, retries = MAX_RETRIES) => {
           6. If the JSON contains empty object, empty array, or keys with only whitespace, keep them 100% identical.
           7. If the value contains curly braces like {ticker} or {name}, this is a placeholder variable; the content within the curly braces does not need to be translated.
           8. The keys may contain dots (.) which represent nested paths like "metadata.default.title" - these are just key names, do NOT interpret them as nested structures.
-          9. BestStock AI is a brand name and does not require translation.
+          9. Do not translate brand names.
 
           Strong Warning:
           - If you omit, lose, or duplicate any key, it will be considered a critical error.
@@ -351,7 +354,7 @@ const start = async () => {
     const originalData = JSON.parse(originalJson);
 
     // 拍平JSON
-    console.log('\n🔄 正在拍平JSON结构...\');
+    console.log('🔄 正在拍平JSON结构...\');
     const flattenedItems = flattenJSON(originalData);
     console.log(\`✅ 拍平完成，共 \${flattenedItems.length} 个条目\n\`);
 
@@ -365,13 +368,13 @@ const start = async () => {
     console.log(\`🌍 目标语言: \${OUTPUT_LIST.map((l) => l.language).join(
       ", "
     )}\`);
-    console.log('================================\n');
+    console.log('================================');
 
     // 并行处理所有语言
     const languagePromises = OUTPUT_LIST.map(
       async ({ language, outputname }) => {
         try {
-          console.log(\`\n🚀 开始翻译：\${language}\n\`);
+          console.log(\`🚀 开始翻译：\${language}\`);
           const outputPath = path.join(TRANSLATED_DIR, outputname);
 
           const startTime = Date.now();
@@ -396,7 +399,7 @@ const start = async () => {
     const results = await Promise.all(languagePromises);
 
     // 输出结果摘要
-    console.log("\n========== 翻译结果摘要 ==========\");
+    console.log("========== 翻译结果摘要 ==========\");
     results.forEach(({ language, success, error }) => {
       if (success) {
         console.log(\`✅ \${language}: 成功\`);
