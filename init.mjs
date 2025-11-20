@@ -5,7 +5,7 @@ import path from "path";
 
 const scriptsDir = path.join(process.cwd(), "scripts/i18n");
 if (!fs.existsSync(scriptsDir)) {
-  fs.mkdirSync(scriptsDir);
+  fs.mkdirSync(scriptsDir, { recursive: true });
 }
 
 const constantsPath = path.join(scriptsDir, "constants.mjs");
