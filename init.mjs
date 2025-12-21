@@ -208,8 +208,8 @@ const translateWithRetry = async (prompt, language, retries = MAX_RETRIES) => {
   }
 };
 
-const processBatchesInParallel = async (batches, language, outputPath) => {
-  const translatedItems = []; // 存储翻译后的路径-值对
+const processBatchesInParallel = async (batches, language, outputPath, existingItems = []) => {
+  const translatedItems = [...existingItems]; // 初始化为已有的翻译条目
   const failedBatches = [];
   const totalBatches = batches.length;
 
@@ -302,8 +302,8 @@ const processBatchesInParallel = async (batches, language, outputPath) => {
     const overallProgress = ((completedBatches / totalBatches) * 100).toFixed(1);
 
     console.log(
-      \`\n📊 \${language} 进度: \${completedBatches}/\${totalBatches} 批次 (\${overallProgress}%) | \` +
-      \`已翻译: \${translatedItems.length} 项 | 失败: \${failedBatches.length}\n\`
+      \`\\n📊 \${language} 进度: \${completedBatches}/\${totalBatches} 批次 (\${overallProgress}%) | \` +
+      \`已翻译: \${translatedItems.length} 项 | 失败: \${failedBatches.length}\\n\`
     );
 
     // 如果不是最后一组，稍微延迟一下避免API限制
@@ -342,6 +342,34 @@ const prepareBatches = (flattenedItems) => {
   return batches;
 };
 
+/**
+ * 读取已存在的翻译文件
+ * @param {String} filePath - 文件路径
+ * @returns {Object} 已存在的翻译数据，如果文件不存在返回空对象
+ */
+const loadExistingTranslation = (filePath) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    console.log(\`⚠️  读取已有翻译文件失败: \${error.message}，将重新翻译全部内容\`);
+  }
+  return {};
+};
+
+/**
+ * 过滤出需要翻译的条目（目标文件中不存在的key）
+ * @param {Array} flattenedItems - 源文件拍平后的条目
+ * @param {Array} existingFlattenedItems - 已有翻译文件拍平后的条目
+ * @returns {Array} 需要翻译的条目
+ */
+const filterNewItems = (flattenedItems, existingFlattenedItems) => {
+  const existingKeys = new Set(existingFlattenedItems.map(item => pathToKey(item.path)));
+  return flattenedItems.filter(item => !existingKeys.has(pathToKey(item.path)));
+};
+
 const start = async () => {
   // 确保输出目录存在
   if (!fs.existsSync(TRANSLATED_DIR)) {
@@ -354,42 +382,50 @@ const start = async () => {
     const originalData = JSON.parse(originalJson);
 
     // 拍平JSON
-    console.log('🔄 正在拍平JSON结构...\');
+    console.log('🔄 正在拍平JSON结构...');
     const flattenedItems = flattenJSON(originalData);
-    console.log(\`✅ 拍平完成，共 \${flattenedItems.length} 个条目\n\`);
-
-    // 准备批次
-    const batches = prepareBatches(flattenedItems);
+    console.log(\`✅ 拍平完成，共 \${flattenedItems.length} 个条目\\n\`);
 
     console.log('========== 翻译配置 ==========');
     console.log(\`📦 JSON条目总数: \${flattenedItems.length} 项\`);
-    console.log(\`📦 批次总数: \${batches.length} (每批 \${INPUT_COUNT} 条)\`);
     console.log(\`⚙️  并行批次: \${PARALLEL_BATCHES} | 最大重试: \${MAX_RETRIES}\`);
-    console.log(\`🌍 目标语言: \${OUTPUT_LIST.map((l) => l.language).join(
-      ", "
-    )}\`);
-    console.log('================================');
+    console.log(\`🌍 目标语言: \${OUTPUT_LIST.map((l) => l.language).join(", ")}\`);
+    console.log('================================\\n');
 
     // 并行处理所有语言
     const languagePromises = OUTPUT_LIST.map(
       async ({ language, outputname }) => {
         try {
-          console.log(\`🚀 开始翻译：\${language}\`);
           const outputPath = path.join(TRANSLATED_DIR, outputname);
 
+          // 读取已有的翻译文件
+          const existingData = loadExistingTranslation(outputPath);
+          const existingFlattenedItems = flattenJSON(existingData);
+
+          // 过滤出需要翻译的新条目
+          const newItems = filterNewItems(flattenedItems, existingFlattenedItems);
+
+          if (newItems.length === 0) {
+            console.log(\`⏭️  [\${language}] 所有 key 已存在，跳过翻译\`);
+            return { language, success: true, skipped: true };
+          }
+
+          console.log(\`🚀 [\${language}] 开始翻译：共 \${newItems.length} 个新条目 (已跳过 \${flattenedItems.length - newItems.length} 个已存在的)\`);
+
+          // 准备批次（只翻译新条目）
+          const batches = prepareBatches(newItems);
+          console.log(\`📦 [\${language}] 批次总数: \${batches.length} (每批 \${INPUT_COUNT} 条)\`);
+
           const startTime = Date.now();
-          await processBatchesInParallel(batches, language, outputPath);
+          const translatedNewData = await processBatchesInParallel(batches, language, outputPath, existingFlattenedItems);
           const endTime = Date.now();
 
           console.log(
-            \`\n✅ \${language} 翻译完成，耗时: \${(
-    (endTime - startTime) /
-    1000
-  ).toFixed(2)}秒\n\`,
+            \`\\n✅ \${language} 翻译完成，耗时: \${((endTime - startTime) / 1000).toFixed(2)}秒\\n\`
           );
-          return { language, success: true };
+          return { language, success: true, newCount: newItems.length };
         } catch (error) {
-          console.error(\`\n❌ \${language} 翻译失败:\${error.message}\n\`);
+          console.error(\`\\n❌ \${language} 翻译失败:\${error.message}\\n\`);
           return { language, success: false, error: error.message };
         }
       },
@@ -399,19 +435,21 @@ const start = async () => {
     const results = await Promise.all(languagePromises);
 
     // 输出结果摘要
-    console.log("========== 翻译结果摘要 ==========\");
-    results.forEach(({ language, success, error }) => {
+    console.log("========== 翻译结果摘要 ==========");
+    results.forEach(({ language, success, error, skipped, newCount }) => {
       if (success) {
-        console.log(\`✅ \${language}: 成功\`);
+        if (skipped) {
+          console.log(\`⏭️  \${language}: 跳过 (无新条目)\`);
+        } else {
+          console.log(\`✅ \${language}: 成功 (翻译了 \${newCount} 个新条目)\`);
+        }
       } else {
         console.log(\`❌ \${language}: 失败 - \${error}\`);
       }
     });
 
     const successCount = results.filter((r) => r.success).length;
-    console.log(\`\n翻译结束🎉 成功: \${successCount}/\${
-    results.length
-  } 种语言\`);
+    console.log(\`\\n翻译结束🎉 成功: \${successCount}/\${results.length} 种语言\`);
   } catch (error) {
     console.error("翻译过程中发生错误:", error);
   }
